@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#176b48">
+<title>Albaranes de Butano</title>
+<style>
+:root{--green:#176b48;--green2:#e8f5ee;--red:#a83232;--red2:#fff0f0;--ink:#17211c;--muted:#68746d;--line:#e1e8e3;--bg:#f5f8f6}
+*{box-sizing:border-box}
+body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;background:var(--bg);color:var(--ink);padding:env(safe-area-inset-top) 14px calc(22px + env(safe-area-inset-bottom))}
+main{max-width:680px;margin:0 auto}
+header{background:var(--green);color:white;padding:22px 18px;border-radius:0 0 20px 20px;margin:0 -14px 18px}
+header h1{font-size:24px;margin:0 0 5px} header p{margin:0;opacity:.88;font-size:14px}
+.cards{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:18px}
+.card{background:white;border:1px solid var(--line);border-radius:15px;padding:14px}
+.card .label{font-size:12px;color:var(--muted);margin-bottom:7px}.card .value{font-size:22px;font-weight:750;letter-spacing:-.4px}
+section{background:white;border:1px solid var(--line);border-radius:17px;padding:16px;margin-bottom:16px}
+h2{font-size:18px;margin:0 0 14px}
+label{display:block;font-size:13px;font-weight:650;margin:12px 0 6px}
+input{width:100%;font:inherit;font-size:16px;padding:12px;border:1px solid #ccd7cf;border-radius:10px;background:#fff;color:var(--ink)}
+button{font:inherit;font-weight:700;border:0;border-radius:11px;padding:12px 14px;cursor:pointer}
+.primary{background:var(--green);color:white;width:100%;margin-top:16px}
+.filters{display:flex;gap:7px;flex-wrap:wrap;margin-bottom:12px}
+.filter{background:#eef2ef;color:#34433a;padding:9px 11px;font-size:13px}.filter.active{background:var(--green);color:white}
+.entry{border:1px solid var(--line);border-radius:13px;padding:13px;margin-top:10px}
+.entry-top{display:flex;justify-content:space-between;gap:10px;align-items:flex-start}
+.entry h3{font-size:16px;margin:0 0 4px;overflow-wrap:anywhere}.sub{font-size:13px;color:var(--muted)}
+.amount{font-weight:800;font-size:17px;white-space:nowrap}
+.status{display:inline-block;border-radius:20px;padding:5px 8px;font-size:12px;font-weight:750;margin-top:10px}
+.pending{background:#fff1d8;color:#805000}.paid{background:var(--green2);color:var(--green)}
+.actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}.actions button{font-size:13px;padding:9px 10px}
+.pay{background:var(--green2);color:var(--green)}.undo{background:#eef2ef;color:#34433a}.delete{background:var(--red2);color:var(--red)}
+.empty{text-align:center;color:var(--muted);padding:22px 8px;font-size:14px}
+.note{font-size:12px;color:var(--muted);line-height:1.45;margin:12px 2px}
+@media(min-width:520px){header{margin-top:14px;border-radius:20px}.cards{grid-template-columns:repeat(4,1fr)}.card .value{font-size:20px}}
+</style>
+</head>
+<body>
+<main>
+<header><h1>📋 Albaranes de Butano</h1><p>Control de albaranes recibidos y pagos pendientes</p></header>
+<div class="cards">
+  <div class="card"><div class="label">Total recibido</div><div class="value" id="total">0,00 €</div></div>
+  <div class="card"><div class="label">Pendiente de pago</div><div class="value" id="pending">0,00 €</div></div>
+  <div class="card"><div class="label">Ya pagado</div><div class="value" id="paid">0,00 €</div></div>
+  <div class="card"><div class="label">Albaranes</div><div class="value" id="count">0</div></div>
+</div>
+<section>
+<h2>➕ Añadir albarán</h2>
+<form id="form">
+<label for="date">Fecha de recepción</label><input id="date" type="date" required>
+<label for="number">Número de albarán</label><input id="number" type="text" placeholder="Ej. 123456" autocomplete="off" required>
+<label for="amount">Importe (€)</label><input id="amount" type="number" min="0.01" step="0.01" inputmode="decimal" placeholder="Ej. 245,50" required>
+<button class="primary" type="submit">Guardar albarán</button>
+</form>
+</section>
+<section>
+<div class="filters page-tabs">
+<button class="filter active" data-page="pending">Pendientes de pago</button>
+<button class="filter" data-page="paid">Albaranes pagados</button>
+</div>
+<div id="pendingPage"><h2>⏳ Pendientes de pago</h2><div id="pendingList"></div></div>
+<div id="paidPage" hidden><h2>✅ Albaranes pagados</h2><div id="paidList"></div></div>
+<p class="note">Los datos se guardan en este navegador del iPhone. No se sincronizan automáticamente con otros dispositivos. No borres los datos de Safari si quieres conservar el registro.</p>
+</section>
+</main>
+<script>
+const KEY='albaranesButano_v1';
+let items=[];
+try{items=JSON.parse(localStorage.getItem(KEY)||'[]');if(!Array.isArray(items))items=[]}catch(e){items=[]}
+let page='pending';
+const $=id=>document.getElementById(id);
+const money=n=>Number(n).toLocaleString('es-ES',{style:'currency',currency:'EUR'});
+const dateFmt=s=>{if(!s)return '';const [y,m,d]=s.split('-');return `${d}/${m}/${y}`};
+const save=()=>{localStorage.setItem(KEY,JSON.stringify(items));render()};
+function render(){
+ const total=items.reduce((s,x)=>s+Number(x.amount),0);
+ const paidTotal=items.filter(x=>x.paid).reduce((s,x)=>s+Number(x.amount),0);
+ $('total').textContent=money(total);$('paid').textContent=money(paidTotal);$('pending').textContent=money(total-paidTotal);$('count').textContent=items.length;
+ renderList('pendingList',items.filter(x=>!x.paid).sort((a,b)=>b.date.localeCompare(a.date)||b.created-a.created),'pending');
+ renderList('paidList',items.filter(x=>x.paid).sort((a,b)=>(b.paidDate||'').localeCompare(a.paidDate||'')||b.date.localeCompare(a.date)||b.created-a.created),'paid');
+}
+function renderList(targetId,visible,type){
+ const target=$(targetId);target.innerHTML='';
+ if(!visible.length){target.innerHTML=`<div class="empty">${type==='paid'?'Todavía no has marcado ningún albarán como pagado.':'No hay albaranes pendientes de pago. ¡Todo al día!'}</div>`;return}
+ visible.forEach(x=>{
+  const el=document.createElement('article');el.className='entry';
+  const top=document.createElement('div');top.className='entry-top';
+  const left=document.createElement('div');const h=document.createElement('h3');h.textContent='Albarán nº '+x.number;
+  const sub=document.createElement('div');sub.className='sub';sub.textContent='Recibido el '+dateFmt(x.date);
+  left.append(h,sub);const amount=document.createElement('div');amount.className='amount';amount.textContent=money(x.amount);top.append(left,amount);
+  const badge=document.createElement('span');badge.className='status '+(x.paid?'paid':'pending');badge.textContent=x.paid?'✓ PAGADO':'● PENDIENTE';
+  el.append(top,badge);
+  if(x.paid&&x.paidDate){const pd=document.createElement('div');pd.className='sub';pd.style.marginTop='6px';pd.textContent='Pagado el '+dateFmt(x.paidDate);el.append(pd)}
+  const actions=document.createElement('div');actions.className='actions';
+  const toggle=document.createElement('button');toggle.className=x.paid?'undo':'pay';toggle.textContent=x.paid?'Volver a pendientes':'Marcar como pagado';
+  toggle.onclick=()=>{const it=items.find(i=>i.id===x.id);it.paid=!it.paid;it.paidDate=it.paid?new Date().toISOString().slice(0,10):'';save()};
+  const del=document.createElement('button');del.className='delete';del.textContent='Eliminar';del.onclick=()=>{if(confirm('¿Quieres eliminar el albarán nº '+x.number+'? Esta acción no se puede deshacer.')){items=items.filter(i=>i.id!==x.id);save()}};
+  actions.append(toggle,del);el.append(actions);target.append(el);
+ });
+}
+document.querySelectorAll('[data-page]').forEach(b=>b.addEventListener('click',()=>{
+ page=b.dataset.page;
+ document.querySelectorAll('[data-page]').forEach(x=>x.classList.toggle('active',x===b));
+ $('pendingPage').hidden=page!=='pending';$('paidPage').hidden=page!=='paid';
+}));
+$('form').addEventListener('submit',e=>{
+ e.preventDefault();const number=$('number').value.trim();const amount=Number($('amount').value);const date=$('date').value;
+ if(!number||!date||!Number.isFinite(amount)||amount<=0){alert('Revisa la fecha, el número y el importe.');return}
+ if(items.some(x=>x.number.toLowerCase()===number.toLowerCase())){if(!confirm('Ya existe un albarán con ese número. ¿Quieres guardar otro igualmente?'))return}
+ items.push({id:Date.now().toString(36)+Math.random().toString(36).slice(2,7),date,number,amount:Math.round(amount*100)/100,paid:false,paidDate:'',created:Date.now()});
+ save();$('number').value='';$('amount').value='';$('date').value=new Date().toISOString().slice(0,10);$('number').focus();
+});
+document.querySelectorAll('[data-filter]').forEach(b=>b.addEventListener('click',()=>{filter=b.dataset.filter;document.querySelectorAll('[data-filter]').forEach(x=>x.classList.toggle('active',x===b));render()}));
+$('date').value=new Date().toISOString().slice(0,10);
+render();
+</script>
+</body>
+</html>
